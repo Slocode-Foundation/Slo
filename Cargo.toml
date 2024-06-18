@@ -1,0 +1,7 @@
+[package]
+name = "slo"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "A compiler for a functional language named Slo. Inspired by Haskell and Rust."
+[dependencies]
