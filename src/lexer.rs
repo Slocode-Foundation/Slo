@@ -35,7 +35,7 @@ pub enum Token {
 
 #[derive(Debug, PartialEq)]
 pub struct Location {
-    line: usize
+    pub line: usize
 }
 
 /// Consume characters from a Peekable<Chars> iterator while a condition Fn(char) -> bool is true
@@ -56,57 +56,68 @@ where
     result
 }
 
+pub fn tokenize_number(chars: &mut Peekable<Chars>) -> Token {
+    let number = consume_while(chars, |c| c.is_ascii_digit() || c == '.');
+    if number.contains('.') {
+        Token::Literal(LiteralKind::Float { value: number.parse().unwrap() })
+    } else {
+        Token::Literal(LiteralKind::Int { value: number.parse().unwrap() })
+    }
+}
+
+pub fn tokenize_string(chars: &mut Peekable<Chars>) -> Token {
+    chars.next();
+    let string = consume_while(chars, |c| c != '"');
+    if chars.peek() != Some(&'"') {
+        panic!("Unterminated string");
+    }
+    chars.next();
+    Token::Literal(LiteralKind::String { value: string })
+}
+
+pub fn tokenize_char(chars: &mut Peekable<Chars>) -> Token {
+    chars.next();
+    let character = consume_while(chars, |c| c != '\'');
+    if character.len() != 1 {
+        panic!("Invalid character literal: {}", character);
+    }
+    chars.next();
+    Token::Literal(LiteralKind::Char { value: character.chars().next().unwrap() })
+}
+
+pub fn tokenize_identifier(chars: &mut Peekable<Chars>) -> Token {
+    let condition = |c: char| c.is_alphabetic() || c == '_' || c.is_ascii_digit() || c == '\'';
+    let identifier = consume_while(chars, condition);
+    match identifier.as_str() {
+        "true" => Token::Literal(LiteralKind::Bool { value: true }),
+        "false" => Token::Literal(LiteralKind::Bool { value: false }),
+        _ => Token::Identifier(identifier),
+    }
+}
+
+pub fn tokenize_minus(chars: &mut Peekable<Chars>) -> Token {
+    chars.next();
+    if let Some(&'>') = chars.peek() {
+        chars.next();
+        Token::Arrow
+    } else {
+        Token::Minus
+    }
+}
+
+/// Tokenize the input string and return a vector of tokens with their locations
 pub fn tokenize<T: AsRef<str>>(input: T) -> Result<Vec<(Token, Location)>, (String, Location)> {
     let mut tokens: Vec<(Token, Location)> = Vec::new();
     let mut chars = input.as_ref().chars().peekable();
     let mut line = 0;
     while let Some(&c) = chars.peek() {
         let token = match c {
-            '0'..='9' => { 
-                let number = consume_while(&mut chars, |c| c.is_ascii_digit() || c == '.');
-                if number.contains('.') {
-                    Token::Literal(LiteralKind::Float { value: number.parse().unwrap() })
-                } else {
-                    Token::Literal(LiteralKind::Int { value: number.parse().unwrap() })
-                }
-            },
-            '"' => {
-                chars.next();
-                let string = consume_while(&mut chars, |c| c != '"');
-                if chars.peek() != Some(&'"') {
-                    return Err(("Unterminated string".to_string(), Location { line }));
-                }
-                chars.next();
-                Token::Literal(LiteralKind::String { value: string })
-            },
-            '\'' => { // a character literal, only one character length is allowed
-                chars.next();
-                let character = consume_while(&mut chars, |c| c != '\'');
-                chars.next();
-                if character.len() != 1 {
-                    return Err((format!("Invalid character literal: {}", character), Location { line }));
-                }
-                Token::Literal(LiteralKind::Char { value: character.chars().next().unwrap() })
-            },
-            'a'..='z' | 'A'..='Z' => {
-                let condition = |c: char| c.is_alphabetic() || c == '_' || c.is_ascii_digit() || c == '\'';
-                let identifier = consume_while(&mut chars, condition);
-                match identifier.as_str() {
-                    "true" => Token::Literal(LiteralKind::Bool { value: true }),
-                    "false" => Token::Literal(LiteralKind::Bool { value: false }),
-                    _ => Token::Identifier(identifier),
-                }
-            },
+            '0'..='9' => tokenize_number(&mut chars),
+            '"' => tokenize_string(&mut chars),
+            '\'' => tokenize_char(&mut chars),
+            'a'..='z' | 'A'..='Z' => tokenize_identifier(&mut chars),
             '+' => { chars.next(); Token::Plus },
-            '-' => {
-                chars.next();
-                if let Some(&'>') = chars.peek() {
-                    chars.next();
-                    Token::Arrow
-                } else {
-                    Token::Minus
-                }
-            },
+            '-' => tokenize_minus(&mut chars),
             '*' => { chars.next(); Token::Multiply },
             '/' => { chars.next(); Token::Divide },
             '^' => { chars.next(); Token::Carat },
